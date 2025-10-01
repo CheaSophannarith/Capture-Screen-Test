@@ -89,13 +89,25 @@
     const connectToSignalingServer = () => {
         try {
             console.log('🔗 Connecting to signaling server...')
-            socket.value = io(signalingServerUrl)
+            socket.value = io(signalingServerUrl, {
+                reconnection: true,
+                reconnectionDelay: 1000,
+                reconnectionAttempts: 5
+            })
 
             // Event: Successfully connected and registered
             socket.value.on('connect', () => {
                 isConnectedToServer.value = true
                 console.log('✅ Connected to signaling server')
                 statusMessage.value = 'Connected to signaling server. Waiting for sender...'
+                errorMessage.value = ''
+            })
+
+            // Event: Connection error
+            socket.value.on('connect_error', (error) => {
+                isConnectedToServer.value = false
+                console.error('❌ Connection error:', error)
+                errorMessage.value = `Cannot connect to server at ${signalingServerUrl}. ${error.message}`
             })
 
             // Event: Successfully registered with server
