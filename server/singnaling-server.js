@@ -9,24 +9,43 @@
  */
 
 const { Server } = require('socket.io')
+const http = require('http')
 
-// Create Socket.io server on port 3000
-const io = new Server(3000, {
+// Create HTTP server first
+const httpServer = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' })
+  res.end('WebRTC Signaling Server is running!\n')
+})
+
+// Create Socket.io server on top of HTTP server
+const io = new Server(httpServer, {
   cors: {
     origin: '*', // Allow connections from any origin (Electron app)
     methods: ['GET', 'POST']
   }
 })
 
+// Listen on all network interfaces (0.0.0.0) so other PCs can connect
+httpServer.listen(3000, '0.0.0.0', () => {
+  console.log('===========================================')
+  console.log('ðŸš€ Signaling server running!')
+  console.log('===========================================')
+  console.log('   Local access:   http://localhost:3000')
+  console.log('   Network access: http://192.168.1.4:3000')
+  console.log('')
+  console.log('ðŸ’¡ Other computers can connect using:')
+  console.log('   http://192.168.1.4:3000')
+  console.log('===========================================')
+  console.log('')
+})
+
 // Store connected peers
 // Format: { socketId: { id, role: 'sender' or 'receiver' } }
 const peers = new Map()
 
-console.log('=€ Signaling server running on port 3000')
-
 // Handle new client connections
 io.on('connection', (socket) => {
-  console.log(` New client connected: ${socket.id}`)
+  console.log(`âœ… New client connected: ${socket.id}`)
 
   /**
    * EVENT: 'register'
@@ -34,8 +53,8 @@ io.on('connection', (socket) => {
    */
   socket.on('register', (role) => {
     peers.set(socket.id, { id: socket.id, role })
-    console.log(`=Ý Client ${socket.id} registered as: ${role}`)
-    console.log(`=e Total peers: ${peers.size}`)
+    console.log(`ðŸ“ Client ${socket.id} registered as: ${role}`)
+    console.log(`ðŸ‘¥ Total peers: ${peers.size}`)
 
     // Send back the client's own ID
     socket.emit('registered', socket.id)
@@ -52,7 +71,7 @@ io.on('connection', (socket) => {
    * Contains: video codec info, network details, media capabilities
    */
   socket.on('offer', ({ offer, targetId }) => {
-    console.log(`=ä Offer from ${socket.id} ’ ${targetId}`)
+    console.log(`ðŸ“¤ Offer from ${socket.id} â†’ ${targetId}`)
 
     // Forward the offer to the target peer
     io.to(targetId).emit('offer', {
@@ -66,7 +85,7 @@ io.on('connection', (socket) => {
    * Receiver responds with an answer (SDP) back to sender
    */
   socket.on('answer', ({ answer, targetId }) => {
-    console.log(`=å Answer from ${socket.id} ’ ${targetId}`)
+    console.log(`ðŸ“¥ Answer from ${socket.id} â†’ ${targetId}`)
 
     // Forward the answer to the sender
     io.to(targetId).emit('answer', {
@@ -83,7 +102,7 @@ io.on('connection', (socket) => {
    * Both peers send multiple candidates until they find one that works
    */
   socket.on('ice-candidate', ({ candidate, targetId }) => {
-    console.log(`>Ê ICE candidate from ${socket.id} ’ ${targetId}`)
+    console.log(`ðŸ§Š ICE candidate from ${socket.id} â†’ ${targetId}`)
 
     // Forward ICE candidate to target peer
     io.to(targetId).emit('ice-candidate', {
@@ -97,14 +116,14 @@ io.on('connection', (socket) => {
    * Clean up when a peer disconnects
    */
   socket.on('disconnect', () => {
-    console.log(`L Client disconnected: ${socket.id}`)
+    console.log(`âŒ Client disconnected: ${socket.id}`)
 
     const peer = peers.get(socket.id)
     if (peer) {
       // Notify other peers about disconnection
       socket.broadcast.emit('peer-disconnected', socket.id)
       peers.delete(socket.id)
-      console.log(`=e Total peers: ${peers.size}`)
+      console.log(`ðŸ‘¥ Total peers: ${peers.size}`)
     }
 
     broadcastPeerList()
@@ -116,18 +135,18 @@ io.on('connection', (socket) => {
   function broadcastPeerList() {
     const peerList = Array.from(peers.values())
     io.emit('peer-list', peerList)
-    console.log('=Ë Broadcasted peer list:', peerList)
+    console.log('ðŸ“‹ Broadcasted peer list:', peerList)
   }
 })
 
 /**
  * HOW THIS WORKS:
  *
- * 1. Sender opens ScreenCapture.vue ’ connects to this server
- * 2. Receiver opens ScreenReceiver.vue ’ connects to this server
+ * 1. Sender opens ScreenCapture.vue â†’ connects to this server
+ * 2. Receiver opens ScreenReceiver.vue â†’ connects to this server
  * 3. Both register their role (sender/receiver)
- * 4. Sender creates WebRTC offer ’ sends via this server ’ reaches receiver
- * 5. Receiver creates WebRTC answer ’ sends via this server ’ reaches sender
+ * 4. Sender creates WebRTC offer â†’ sends via this server â†’ reaches receiver
+ * 5. Receiver creates WebRTC answer â†’ sends via this server â†’ reaches sender
  * 6. Both exchange ICE candidates via this server
  * 7. Once WebRTC connection is established, they talk DIRECTLY (P2P)
  * 8. This server is no longer involved in video transmission!
