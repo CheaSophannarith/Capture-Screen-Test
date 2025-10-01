@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebRTC Connection Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .test-box {
+            border: 2px solid #ddd;
+            padding: 20px;
+            margin: 10px 0;
+            border-radius: 8px;
+        }
+        .success { border-color: #4CAF50; background: #E8F5E9; }
+        .error { border-color: #f44336; background: #FFEBEE; }
+        .pending { border-color: #FF9800; background: #FFF3E0; }
+        button {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover { background: #1976D2; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+        input { width: 300px; padding: 8px; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <h1>🔍 WebRTC Connection Test</h1>
+
+    <div class="test-box">
+        <h3>Step 1: Configure Signaling Server URL</h3>
+        <p>Enter the signaling server URL (e.g., http://192.168.1.100:3000):</p>
+        <input type="text" id="serverUrl" value="http://localhost:3000" />
+        <button onclick="testConnection()">Test Connection</button>
+    </div>
+
+    <div id="signalingTest" class="test-box pending">
+        <h3>📡 Signaling Server Test</h3>
+        <div id="signalingResult">Click "Test Connection" to start</div>
+    </div>
+
+    <div id="stunTest" class="test-box pending">
+        <h3>🧊 STUN Server Test</h3>
+        <div id="stunResult">Waiting for signaling server test...</div>
+    </div>
+
+    <div id="iceTest" class="test-box pending">
+        <h3>🌐 ICE Candidate Generation</h3>
+        <div id="iceResult">Waiting for STUN test...</div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        let socket;
+
+        async function testConnection() {
+            const serverUrl = document.getElementById('serverUrl').value;
+
+            // Test 1: Signaling Server
+            testSignalingServer(serverUrl);
+        }
+
+        function testSignalingServer(serverUrl) {
+            const resultDiv = document.getElementById('signalingResult');
+            const testBox = document.getElementById('signalingTest');
+
+            resultDiv.innerHTML = '⏳ Connecting to signaling server...';
+            testBox.className = 'test-box pending';
+
+            try {
+                socket = io(serverUrl);
+
+                socket.on('connect', () => {
+                    resultDiv.innerHTML = `
+                        ✅ <strong>Connected!</strong><br>
+                        Socket ID: ${socket.id}<br>
+                        Server URL: ${serverUrl}
+                    `;
+                    testBox.className = 'test-box success';
+
+                    // Register as test client
+                    socket.emit('register', 'test');
+
+                    // Proceed to STUN test
+                    testSTUN();
+                });
+
+                socket.on('connect_error', (error) => {
+                    resultDiv.innerHTML = `
+                        ❌ <strong>Connection Failed!</strong><br>
+                        Error: ${error.message}<br><br>
+                        <strong>Troubleshooting:</strong><br>
+                        • Make sure signaling server is running<br>
+                        • Check firewall settings<br>
+                        • Verify the URL is correct
+                    `;
+                    testBox.className = 'test-box error';
+                });
+
+            } catch (error) {
+                resultDiv.innerHTML = `❌ Error: ${error.message}`;
+                testBox.className = 'test-box error';
+            }
+        }
+
+        async function testSTUN() {
+            const resultDiv = document.getElementById('stunResult');
+            const testBox = document.getElementById('stunTest');
+
+            resultDiv.innerHTML = '⏳ Testing STUN server connectivity...';
+            testBox.className = 'test-box pending';
+
+            const stunServer = 'stun:stun.l.google.com:19302';
+
+            try {
+                const pc = new RTCPeerConnection({
+                    iceServers: [{ urls: stunServer }]
+                });
+
+                // Create a dummy data channel to trigger ICE
+                pc.createDataChannel('test');
+
+                // Create offer to start ICE gathering
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+
+                // Wait for ICE gathering
+                await new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => reject('Timeout'), 5000);
+
+                    pc.onicecandidate = (event) => {
+                        if (event.candidate) {
+                            if (event.candidate.type === 'srflx') {
+                                clearTimeout(timeout);
+                                resultDiv.innerHTML = `
+                                    ✅ <strong>STUN Server Working!</strong><br>
+                                    Server: ${stunServer}<br>
+                                    Your public IP discovered: ${event.candidate.address || 'Hidden'}:${event.candidate.port || ''}
+                                `;
+                                testBox.className = 'test-box success';
+                                resolve();
+                                testICE(pc);
+                            }
+                        } else {
+                            // ICE gathering complete but no srflx candidate
+                            clearTimeout(timeout);
+                            resultDiv.innerHTML = `
+                                ⚠️ <strong>STUN Server Reachable but No Public IP Found</strong><br>
+                                This might happen if you're already on a public IP.<br>
+                                Connection should still work on local network.
+                            `;
+                            testBox.className = 'test-box pending';
+                            resolve();
+                            testICE(pc);
+                        }
+                    };
+                });
+
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    ❌ <strong>STUN Test Failed!</strong><br>
+                    Error: ${error}<br><br>
+                    <strong>This means:</strong><br>
+                    • WebRTC might be blocked by firewall<br>
+                    • Internet connection issues<br>
+                    • May need TURN server for relay
+                `;
+                testBox.className = 'test-box error';
+            }
+        }
+
+        function testICE(pc) {
+            const resultDiv = document.getElementById('iceResult');
+            const testBox = document.getElementById('iceTest');
+
+            resultDiv.innerHTML = '⏳ Gathering ICE candidates...';
+            testBox.className = 'test-box pending';
+
+            const candidates = {
+                host: [],
+                srflx: [],
+                relay: []
+            };
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    const type = event.candidate.type;
+                    candidates[type].push(event.candidate);
+                } else {
+                    // ICE gathering complete
+                    let html = '<strong>ICE Candidates Found:</strong><br><br>';
+
+                    if (candidates.host.length > 0) {
+                        html += `✅ <strong>Host Candidates:</strong> ${candidates.host.length} (Local network)<br>`;
+                    }
+
+                    if (candidates.srflx.length > 0) {
+                        html += `✅ <strong>Server Reflexive:</strong> ${candidates.srflx.length} (Via STUN)<br>`;
+                    }
+
+                    if (candidates.relay.length > 0) {
+                        html += `✅ <strong>Relay Candidates:</strong> ${candidates.relay.length} (Via TURN)<br>`;
+                    }
+
+                    html += '<br><strong>Summary:</strong><br>';
+
+                    if (candidates.host.length > 0 || candidates.srflx.length > 0) {
+                        html += '✅ You should be able to establish P2P connections!';
+                        testBox.className = 'test-box success';
+                    } else {
+                        html += '⚠️ No candidates found. You may need a TURN server.';
+                        testBox.className = 'test-box error';
+                    }
+
+                    resultDiv.innerHTML = html;
+                }
+            };
+        }
+    </script>
+</body>
+</html>
