@@ -12,8 +12,7 @@
             <!-- Remote Video Display -->
             <div class="bg-gray-900 rounded-lg overflow-hidden mb-6 relative" style="aspect-ratio: 16/9;">
                 <video ref="remoteVideo" autoplay muted class="w-full h-full object-contain"></video>
-                <div v-if="!isReceiving"
-                    class="absolute inset-0 flex items-center justify-center text-gray-400">
+                <div v-if="!isReceiving" class="absolute inset-0 flex items-center justify-center text-gray-400">
                     <div class="text-center">
                         <Monitor :size="64" class="mx-auto mb-4" />
                         <p class="text-lg">Waiting for sender to share screen...</p>
@@ -56,6 +55,19 @@
             </div>
         </div>
     </div>
+    <!-- <dialog v-if="!approveConnection" class="modal">
+        <form method="dialog" class="modal-box">
+            <h3 class="font-bold text-lg">Incoming Screen Share Request</h3>
+            <p class="py-4">A sender wants to share their screen with you. Do you want to accept?</p>
+            <div class="modal-action">
+                <button @click="approveConnection = true" class="btn btn-primary">Accept</button>
+                <button @click="handleBackToHome" class="btn btn-secondary">Decline</button>
+            </div>
+        </form>
+        <form method="dialog" class="modal-backdrop">
+            <button>close</button>
+        </form>
+    </dialog> -->
 </template>
 
 <script setup>
@@ -76,6 +88,7 @@
     const connectionState = ref('Not connected')
     const statusMessage = ref('')
     const errorMessage = ref('')
+    // const approveConnection = ref(false)
 
     const handleBackToHome = () => {
         cleanup()

@@ -178,7 +178,7 @@
 
             // Request screen capture using Electron's desktopCapturer
             const stream = await navigator.mediaDevices.getUserMedia({
-                audio: false,
+                audio: true,
                 video: {
                     mandatory: {
                         chromeMediaSource: 'desktop'
