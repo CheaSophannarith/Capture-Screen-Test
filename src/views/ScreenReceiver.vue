@@ -150,6 +150,12 @@
                 statusMessage.value = 'Disconnected from signaling server'
             })
 
+            // Event: Reconnected to server
+            socket.value.on('reconnect', () => {
+                console.log('🔄 Reconnected to signaling server. Re-registering...')
+                socket.value.emit('register', 'receiver')
+            })
+
             // Register as receiver
             socket.value.emit('register', 'receiver')
 

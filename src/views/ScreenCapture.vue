@@ -107,6 +107,12 @@
                 statusMessage.value = `Disconnected: ${reason}`
             })
 
+            // Event: Reconnected to server
+            socket.value.on('reconnect', () => {
+                console.log('🔄 Reconnected to signaling server. Re-registering...')
+                socket.value.emit('register', 'sender')
+            })
+
             // Event: Successfully registered with server
             socket.value.on('registered', (id) => {
                 myId.value = id
@@ -117,8 +123,22 @@
             // Event: Receive list of available receivers
             socket.value.on('peer-list', (peers) => {
                 // Filter to show only receivers
+                const previousCount = availableReceivers.value.length
                 availableReceivers.value = peers.filter(p => p.role === 'receiver' && p.id !== myId.value)
                 console.log('📋 Available receivers:', availableReceivers.value)
+
+                // If we're already capturing and a new receiver joined, auto-connect
+                if (mediaStream.value && availableReceivers.value.length > previousCount) {
+                    console.log('🆕 New receiver detected! Auto-connecting...')
+                    receiverId.value = availableReceivers.value[0].id
+                    // Close existing connection if any
+                    if (peerConnection.value) {
+                        peerConnection.value.close()
+                        peerConnection.value = null
+                    }
+                    // Start new connection
+                    initializePeerConnection()
+                }
             })
 
             // Event: Receiver sent back an answer to our offer
